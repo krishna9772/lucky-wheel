@@ -26,14 +26,19 @@ export default {
             background: rgba(0, 0, 0, 0.5); z-index: 0;
         }
 
-        h1 { margin-bottom: 100px; text-shadow: 2px 2px 10px rgba(0,0,0,0.8); color: #ffcc00; z-index: 1; }
+        h1 { margin-bottom: 100px; text-shadow: 2px 2px 10px rgba(0,0,0,0.8); color: #ffcc00; z-index: 1; font-size: clamp(1.5rem, 5vw, 2.5rem);
+            text-align: center; }
         
-        .wheel-container { position: relative; width: 380px; height: 380px; z-index: 1; }
+        .wheel-container { position: relative; 
+						   width: clamp(280px, 85vw, 380px); 
+            			   height: clamp(280px, 85vw, 380px);
+						   z-index: 1; }
         
         .pointer {
             position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
-            width: 0; height: 0; border-left: 20px solid transparent; border-right: 20px solid transparent;
-            border-top: 40px solid #ffcc00; z-index: 100;
+            width: 0; height: 0; border-left: clamp(15px, 4vw, 20px) solid transparent; 
+            border-right: clamp(15px, 4vw, 20px) solid transparent;
+            border-top: clamp(30px, 8vw, 40px) solid #ffcc00; z-index: 100;
         }
         
         .outer-glow {
@@ -59,10 +64,11 @@ export default {
         .center-logo img { width: 100%; height: 100%; object-fit: contain; }
 
         .spin-btn {
-            margin-top: 120px; padding: 15px 50px; font-size: 22px; font-weight: bold;
+            margin-top: 120px; padding: 15px 50px; font-size: clamp(18px, 4vw, 22px); font-weight: bold;
             color: #440000; background: linear-gradient(#ffea00, #ff9500);
             border: none; border-radius: 50px; cursor: pointer; 
             box-shadow: 0 6px 0 #b36b00; z-index: 1; transition: 0.2s;
+			width: clamp(200px, 60vw, 300px);
         }
         .spin-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #b36b00; }
         .spin-btn:disabled { background: #666; box-shadow: 0 4px 0 #333; cursor: not-allowed; }
@@ -112,6 +118,43 @@ export default {
 			background: #444;
 			box-shadow: none;
 		}
+
+		#statsPanel {
+			position: absolute;
+			right: 20px;
+			top: 20px;
+			width: 260px;
+			max-height: 80vh;
+			overflow-y: auto;
+			background: rgba(0,0,0,0.75);
+			padding: 15px;
+			border-radius: 12px;
+			font-size: 14px;
+			z-index: 2;
+		}
+
+		.stat-row {
+			margin: 6px 0;
+		}
+
+		.stat-bar {
+			height: 6px;
+			background: #ffcc00;
+			border-radius: 3px;
+		}
+
+		/* MOBILE OVERRIDES */
+        @media (max-width: 900px) {
+            #statsPanel {
+                position: relative;
+                right: auto; top: auto;
+                width: 100%;
+                max-width: 400px;
+                margin-top: 40px;
+                max-height: none;
+            }
+            body { justify-content: flex-start; padding-top: 40px; }
+        }
     </style>
 </head>
 <body>
@@ -140,6 +183,11 @@ export default {
             <button class="close-btn" onclick="closeModal()"> Thank You </button>
         </div>
     </div>
+	<div id="statsPanel">
+		<h3>📊 Spin Analytics</h3>
+		<div id="totalSpins">Total Spins: 0</div>
+		<div id="statsList"></div>
+	</div>
 
     <script>
         const canvas = document.getElementById("wheelCanvas");
@@ -149,9 +197,53 @@ export default {
         const modalBox = document.getElementById("modalBox");
         const prizeDisplay = document.getElementById("prizeDisplay");
 
+		const sectors = [
+            { label: "$50 Cashback", cat: "Grand Prize", color: "#d4af37", chance: 2 },
+            { label: "$20 Cashback", cat: "Special Prize", color: "#e61919", chance: 3 },
+            { label: "$10 Cashback", cat: "Daily Wins", color: "#ffcc00", chance: 5 },
+            { label: "Free Earphones", cat: "Inventory Clear", color: "#e61919", chance: 15 },
+            { label: "Free Case/Cable", cat: "Consolation", color: "#ffcc00", chance: 30 },
+            { label: "$5 Voucher", cat: "Future Sales", color: "#e61919", chance: 15 },
+            { label: "Powerbank", cat: "Inventory Clear", color: "#ffcc00", chance: 15 },
+        ];
+
 		const bulbRing = document.getElementById("bulbRing");
 		const bulbCount = 40;
 		let bulbState = false;
+		let currentBulb = 0;
+
+		let spinStats = {
+			total: 0,
+			counts: {}
+		};
+
+		sectors.forEach(s => {
+			spinStats.counts[s.label] = 0;
+		});
+
+	function updateStatsUI() {
+		document.getElementById("totalSpins").innerText = "Total Spins: " + spinStats.total;
+		const container = document.getElementById("statsList");
+		container.innerHTML = "";
+
+		sectors.forEach(s => {
+			const count = spinStats.counts[s.label];
+			const percent = spinStats.total ? ((count / spinStats.total) * 100).toFixed(1) : 0;
+			const row = document.createElement("div");
+			row.className = "stat-row";
+			
+			// Securely wrapped for Worker string injection
+			row.innerHTML = ' \
+				<div style="display:flex; justify-content:space-between"> \
+					<span>' + s.label + '</span> \
+					<span style="color:#aaa">' + count + ' hits</span> \
+				</div> \
+				<div style="font-size:11px; color:#ffcc00">' + percent + '% (Target: ' + s.chance + '%)</div> \
+				<div class="stat-bar" style="width:' + percent + '%"></div> \
+			';
+			container.appendChild(row);
+		});
+	}
 
 	function createBulbs() {
 		const bulbSize = 12;
@@ -187,8 +279,6 @@ export default {
 		}
 	}
 
-	let currentBulb = 0;
-
 	function animateBulbs() {
 		const bulbs = document.querySelectorAll(".bulb");
 
@@ -214,17 +304,7 @@ export default {
 	}
 
 	createBulbs();
-	setInterval(animateBulbs, 100);
-
-        const sectors = [
-            { label: "$50 Cashback", cat: "Grand Prize", color: "#d4af37", chance: 2 },
-            { label: "$20 Cashback", cat: "Special Prize", color: "#e61919", chance: 8 },
-            { label: "$10 Cashback", cat: "Daily Wins", color: "#ffcc00", chance: 15 },
-            { label: "Free Earphones", cat: "Inventory Clear", color: "#e61919", chance: 15 },
-            { label: "Free Case/Cable", cat: "Consolation", color: "#ffcc00", chance: 30 },
-            { label: "$5 Voucher", cat: "Future Sales", color: "#e61919", chance: 15 },
-            { label: "Powerbank", cat: "Inventory Clear", color: "#ffcc00", chance: 15 },
-        ];
+	setInterval(animateBulbs, 70);
 
         const numSectors = sectors.length;
         const arc = (2 * Math.PI) / numSectors;
@@ -288,15 +368,12 @@ export default {
 
         function spin() {
             if(isSpinning) return;
-
-			enterFullscreen();
-
+            enterFullscreen();
             isSpinning = true;
             spinBtn.disabled = true;
+            clearInterval(idleInterval); 
 
-            stopIdleAnimation(); // Idle ကို အရင်ရပ်မယ်
-
-            // 1. Winner ရွေးမယ်
+            // 1. Winner Logic
             let rand = Math.random() * 100;
             let cumulativeChance = 0;
             let winnerIndex = 0;
@@ -305,21 +382,26 @@ export default {
                 if (rand < cumulativeChance) { winnerIndex = i; break; }
             }
 
-            // 2. Rotation တွက်မယ်
+            const win = sectors[winnerIndex];
+
+            // 2. Rotation Animation
             const sectorDeg = 360 / numSectors;
             const targetDeg = (270 - (winnerIndex * sectorDeg) - (sectorDeg / 2));
             const extraSpins = 2160; 
-            
-            // လက်ရှိ ရောက်နေတဲ့ နေရာကနေ ပေါင်းပြီး လှည့်မယ်
             const finalRotation = (currentRotation - (currentRotation % 360)) + extraSpins + (targetDeg < 0 ? targetDeg + 360 : targetDeg);
             currentRotation = finalRotation;
 
-            // Fast Spin Transition ကို ထည့်မယ်
             canvas.style.transition = "transform 5s cubic-bezier(0.15, 0, 0.15, 1)";
-            canvas.style.transform = \`rotate(\${currentRotation}deg)\`;
+            canvas.style.transform = "rotate(" + currentRotation + "deg)";
 
             setTimeout(() => {
-                const win = sectors[winnerIndex];
+                // UPDATE STATS DATA HERE
+                spinStats.total++;
+                spinStats.counts[win.label]++;
+                
+                // REFRESH UI
+                updateStatsUI();
+                
                 showModal(win.label);
                 shootConfetti();
             }, 5000);
@@ -340,6 +422,21 @@ export default {
                 startIdleAnimation(); // Modal ပိတ်ရင် Idle ပြန်စမယ်
             }, 300);
         }
+
+		function pickWinnerIndex() {
+			const total = sectors.reduce((sum, s) => sum + s.chance, 0);
+			const rand = Math.random() * total;
+
+			let cumulative = 0;
+
+			for (let i = 0; i < sectors.length; i++) {
+				cumulative += sectors[i].chance;
+				if (rand < cumulative) return i;
+			}
+
+			return sectors.length - 1;
+		}
+
     </script>
 </body>
 </html>
