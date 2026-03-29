@@ -123,7 +123,6 @@ export default {
 			position: absolute;
 			right: 20px;
 			top: 20px;
-			width: 260px;
 			max-height: 80vh;
 			overflow-y: auto;
 			background: rgba(0,0,0,0.75);
@@ -132,6 +131,17 @@ export default {
 			font-size: 14px;
 			z-index: 2;
 		}
+
+		.side-panels { width: 400px; display: flex; flex-direction: column; gap: 20px; }
+        .panel { background: rgba(0,0,0,0.85); padding: 15px; border-radius: 12px; border: 1px solid #444; }
+        .panel h3 { margin-top: 0; color: #ffcc00; border-bottom: 1px solid #444; padding-bottom: 8px; font-size: 16px; }
+
+        /* Inventory Manager UI */
+        .inventory-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+        .inventory-row input { width: 60px; background: #222; border: 1px solid #555; color: #fff; padding: 4px; border-radius: 4px; text-align: center; }
+        .stock-status { font-size: 10px; padding: 2px 5px; border-radius: 3px; font-weight: bold; }
+        .in-stock { background: #2e7d32; }
+        .out-stock { background: #c62828; }
 
 		.stat-row {
 			margin: 6px 0;
@@ -183,10 +193,25 @@ export default {
             <button class="close-btn" onclick="closeModal()"> Thank You </button>
         </div>
     </div>
-	<div id="statsPanel">
-		<h3>📊 Spin Analytics</h3>
-		<div id="totalSpins">Total Spins: 0</div>
-		<div id="statsList"></div>
+	
+	 <div class="side-panels" id="statsPanel">
+		<div class="panel">
+			<div style="margin-bottom:10px;">
+				<input id="newLabel" placeholder="Item" style="width:100%; margin-bottom:5px;">
+				<input id="newCat" placeholder="Type" style="width:100%; margin-bottom:5px;">
+				<input id="newChance" type="number" placeholder="Chance %" style="width:48%;">
+				<input id="newStock" type="number" placeholder="Qty" style="width:48%;">
+				<button id="addBtn" style="width:100%; margin-top:5px;">➕ Add Item</button>
+			</div>
+				<h3>📦 Gift Inventory (Set Qty)</h3>
+				<div id="inventoryList"></div>
+		</div>
+
+		<div class="panel">
+			<h3>📊 Live Statistics</h3>
+			<div id="totalSpins" style="margin-bottom:10px; font-weight:bold; color: #ffcc00;">Total Spins: 0</div>
+			<div id="statsList"></div>
+		</div>
 	</div>
 
     <script>
@@ -198,13 +223,12 @@ export default {
         const prizeDisplay = document.getElementById("prizeDisplay");
 
 		const sectors = [
-            { label: "$50 Cashback", cat: "Grand Prize", color: "#d4af37", chance: 2 },
-            { label: "$20 Cashback", cat: "Special Prize", color: "#e61919", chance: 3 },
-            { label: "$10 Cashback", cat: "Daily Wins", color: "#ffcc00", chance: 5 },
-            { label: "Free Earphones", cat: "Inventory Clear", color: "#e61919", chance: 15 },
-            { label: "Free Case/Cable", cat: "Consolation", color: "#ffcc00", chance: 30 },
-            { label: "$5 Voucher", cat: "Future Sales", color: "#e61919", chance: 15 },
-            { label: "Powerbank", cat: "Inventory Clear", color: "#ffcc00", chance: 15 },
+            { label: "$50 Cashback", cat: "Grand Prize", color: "#d4af37", chance: 2 , stock: 1},
+            { label: "$20 Cashback", cat: "Special Prize", color: "#e61919", chance: 3 , stock: 1 },
+            { label: "$10 Cashback", cat: "Daily Wins", color: "#ffcc00", chance:5, stock: 1 },
+            { label: "Free Earphones", cat: "Inventory Clear", color: "#e61919",chance:25, stock: 1 },
+            { label: "Free Case/Cable", cat: "Consolation", color: "#ffcc00",chance:30, stock: 1 },
+            { label: "Powerbank", cat: "Inventory Clear", color: "#ffcc00",chance:35, stock: 1 },
         ];
 
 		const bulbRing = document.getElementById("bulbRing");
@@ -220,6 +244,114 @@ export default {
 		sectors.forEach(s => {
 			spinStats.counts[s.label] = 0;
 		});
+
+		function renderInventory() {
+			const container = document.getElementById("inventoryList");
+			container.innerHTML = "";
+
+			sectors.forEach((s, i) => {
+
+				if (typeof s.stock === "undefined") s.stock = 0;
+
+				const row = document.createElement("div");
+				row.className = "inventory-row";
+
+				const statusClass = s.stock > 0 ? "in-stock" : "out-stock";
+
+				// LEFT: label + type
+				const left = document.createElement("div");
+				left.style.display = "flex";
+				left.style.flexDirection = "column";
+
+				const label = document.createElement("input");
+				label.value = s.label;
+				label.style.width = "120px";
+
+				label.addEventListener("input", () => {
+					const oldLabel = s.label;
+					s.label = label.value;
+
+					// update stats key safely
+					spinStats.counts[s.label] = spinStats.counts[oldLabel] || 0;
+					delete spinStats.counts[oldLabel];
+
+					updateStatsUI();
+					drawWheel();
+				});
+
+				const cat = document.createElement("input");
+				cat.value = s.cat;
+				cat.style.width = "120px";
+
+				cat.addEventListener("input", () => {
+					s.cat = cat.value;
+				});
+
+				left.appendChild(label);
+				left.appendChild(cat);
+
+				// RIGHT SIDE
+				const right = document.createElement("div");
+				right.style.display = "flex";
+				right.style.alignItems = "center";
+				right.style.gap = "6px";
+
+				// chance
+				const chance = document.createElement("input");
+				chance.type = "number";
+				chance.value = s.chance;
+
+				chance.addEventListener("input", (e) => {
+					s.chance = parseFloat(e.target.value) || 0;
+					normalizeChances();
+					updateStatsUI();
+				});
+
+				// stock
+				const stock = document.createElement("input");
+				stock.type = "number";
+				stock.value = s.stock;
+
+				stock.addEventListener("input", (e) => {
+					s.stock = Math.max(0, parseInt(e.target.value) || 0);
+					renderInventory();
+				});
+
+				// status
+				const status = document.createElement("span");
+				status.className = "stock-status " + statusClass;
+				status.textContent = s.stock > 0 ? "IN" : "OUT";
+
+				// delete
+				const del = document.createElement("button");
+				del.textContent = "❌";
+
+				del.addEventListener("click", () => {
+					delete spinStats.counts[s.label];
+					sectors.splice(i, 1);
+
+					normalizeChances();
+					renderInventory();
+					drawWheel();
+					updateStatsUI();
+				});
+
+				right.appendChild(chance);
+				right.appendChild(stock);
+				right.appendChild(status);
+				right.appendChild(del);
+
+				row.appendChild(left);
+				row.appendChild(right);
+
+				container.appendChild(row);
+			});
+		}
+
+        function updateStock(index, val) {
+            sectors[index].stock = Math.max(0, parseInt(val) || 0);
+            renderInventory();
+        }
 
 	function updateStatsUI() {
 		document.getElementById("totalSpins").innerText = "Total Spins: " + spinStats.total;
@@ -314,27 +446,50 @@ export default {
         let isSpinning = false;
 
         function drawWheel() {
-            sectors.forEach((sector, i) => {
-                const angle = i * arc;
-                ctx.beginPath();
-                ctx.fillStyle = sector.color;
-                ctx.moveTo(200, 200);
-                ctx.arc(200, 200, 200, angle, angle + arc);
-                ctx.fill();
-                ctx.strokeStyle = "#fff";
-                ctx.lineWidth = 2;
-                ctx.stroke();
+			const ctx = canvas.getContext("2d");
+			const radius = canvas.width / 2;
+			const arc = (2 * Math.PI) / sectors.length;
 
-                ctx.save();
-                ctx.translate(200, 200);
-                ctx.rotate(angle + arc / 2);
-                ctx.textAlign = "right";
-                ctx.fillStyle = (sector.color === "#ffcc00" || sector.color === "#d4af37") ? "black" : "white";
-                ctx.font = "bold 14px Arial";
-                ctx.fillText(sector.label, 190, 8);
-                ctx.restore();
-            });
-        }
+			ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+			sectors.forEach((sector, i) => {
+				const angle = i * arc;
+
+				// 🎨 Draw slice
+				ctx.beginPath();
+				ctx.moveTo(radius, radius);
+				ctx.arc(radius, radius, radius, angle, angle + arc);
+				ctx.fillStyle = sector.color || getRandomColor(i);
+				ctx.fill();
+				ctx.stroke();
+
+				// 🔤 Draw text
+				ctx.save(); // IMPORTANT
+
+				ctx.translate(radius, radius);
+				ctx.rotate(angle + arc / 2);
+
+				ctx.textAlign = "right";
+				ctx.fillStyle = "#fff";
+				ctx.font = "bold 14px Arial";
+
+				// ✂️ Trim long text
+				let label = sector.label;
+				if (label.length > 10) {
+					label = label.substring(0, 10) + "...";
+				}
+
+				ctx.fillText(formatLabel(sector.label), radius - 10, 5);
+				ctx.restore(); // IMPORTANT
+			});
+		}
+
+		function formatLabel(text) {
+			if (text.length > 20) {
+				return text.slice(0, 8) + "...";
+			}
+			return text;
+		}
 
         // --- Idle Animation Logic ---
         function startIdleAnimation() {
@@ -367,45 +522,65 @@ export default {
         }
 
         function spin() {
-            if(isSpinning) return;
-            enterFullscreen();
-            isSpinning = true;
-            spinBtn.disabled = true;
-            clearInterval(idleInterval); 
+			if(isSpinning) return;
 
-            // 1. Winner Logic
-            let rand = Math.random() * 100;
-            let cumulativeChance = 0;
-            let winnerIndex = 0;
-            for (let i = 0; i < sectors.length; i++) {
-                cumulativeChance += sectors[i].chance;
-                if (rand < cumulativeChance) { winnerIndex = i; break; }
-            }
+			enterFullscreen();
+			isSpinning = true;
+			spinBtn.disabled = true;
+			clearInterval(idleInterval);
 
-            const win = sectors[winnerIndex];
+			// ✅ SAFE WINNER SELECTION (STOCK-AWARE)
+			let winnerIndex = pickWinnerIndex();
 
-            // 2. Rotation Animation
-            const sectorDeg = 360 / numSectors;
-            const targetDeg = (270 - (winnerIndex * sectorDeg) - (sectorDeg / 2));
-            const extraSpins = 2160; 
-            const finalRotation = (currentRotation - (currentRotation % 360)) + extraSpins + (targetDeg < 0 ? targetDeg + 360 : targetDeg);
-            currentRotation = finalRotation;
+			 if (winnerIndex === -1) {
+				alert("No items available to win!");
+				isSpinning = false;
+				spinBtn.disabled = false;
+				return;
+			}
 
-            canvas.style.transition = "transform 5s cubic-bezier(0.15, 0, 0.15, 1)";
-            canvas.style.transform = "rotate(" + currentRotation + "deg)";
+			const win = sectors[winnerIndex];
 
-            setTimeout(() => {
-                // UPDATE STATS DATA HERE
-                spinStats.total++;
-                spinStats.counts[win.label]++;
-                
-                // REFRESH UI
-                updateStatsUI();
-                
-                showModal(win.label);
-                shootConfetti();
-            }, 5000);
-        }
+			// ❌ HARD BLOCK (no fake wins)
+			if (!win || win.stock <= 0) {
+				console.error("Invalid winner selected:", win);
+				isSpinning = false;
+				spinBtn.disabled = false;
+				return;
+			}
+
+			// ✅ Deduct stock
+			win.stock--;
+
+			// 🎯 Rotation
+			const sectorDeg = 360 / sectors.length;
+			const targetDeg = (270 - (winnerIndex * sectorDeg) - (sectorDeg / 2));
+			const extraSpins = 2160;
+
+			const finalRotation =
+				(currentRotation - (currentRotation % 360)) +
+				extraSpins +
+				(targetDeg < 0 ? targetDeg + 360 : targetDeg);
+
+			currentRotation = finalRotation;
+
+			canvas.style.transition = "transform 5s cubic-bezier(0.15, 0, 0.15, 1)";
+			canvas.style.transform = "rotate(" + currentRotation + "deg)";
+
+			setTimeout(() => {
+
+				// ✅ VALID STATS ONLY
+				spinStats.total++;
+				spinStats.counts[win.label] = (spinStats.counts[win.label] || 0) + 1;
+
+				renderInventory();     // 🔥 sync stock UI
+				updateStatsUI();       // 🔥 sync stats UI
+
+				showModal(win.label);
+				shootConfetti();
+
+			}, 5000);
+		}
 
         function showModal(prize) {
             prizeDisplay.innerText = prize;
@@ -424,17 +599,78 @@ export default {
         }
 
 		function pickWinnerIndex() {
-			const total = sectors.reduce((sum, s) => sum + s.chance, 0);
+			const available = sectors.filter(s => s.stock > 0 && s.chance > 0);
+
+			if (available.length === 0) {
+				console.error("No available rewards!");
+				return -1;
+			}
+
+			const total = available.reduce((sum, s) => sum + s.chance, 0);
 			const rand = Math.random() * total;
 
 			let cumulative = 0;
 
-			for (let i = 0; i < sectors.length; i++) {
-				cumulative += sectors[i].chance;
-				if (rand < cumulative) return i;
+			for (let i = 0; i < available.length; i++) {
+				cumulative += available[i].chance;
+				if (rand < cumulative) {
+					return sectors.indexOf(available[i]);
+				}
 			}
 
-			return sectors.length - 1;
+			return sectors.indexOf(available[0]);
+		}
+
+		document.getElementById("addBtn").addEventListener("click", addItem);
+
+		function addItem() {
+			const label = document.getElementById("newLabel").value.trim();
+			const cat = document.getElementById("newCat").value.trim();
+			const chance = parseFloat(document.getElementById("newChance").value);
+			const stock = parseInt(document.getElementById("newStock").value);
+
+			if (!label || isNaN(chance)) {
+				alert("Label and Chance are required");
+				return;
+			}
+
+			sectors.push({
+				label,
+				cat,
+				chance,
+				stock: stock || 0,
+				color: Math.random() > 0.5 ? "#ffcc00" : "#e61919"
+			});
+
+			// init stats
+			spinStats.counts[label] = 0;
+
+			clearInputs();
+			normalizeChances();
+
+			renderInventory();
+			drawWheel();
+			updateStatsUI();
+		}
+
+		function clearInputs() {
+			document.getElementById("newLabel").value = "";
+			document.getElementById("newCat").value = "";
+			document.getElementById("newChance").value = "";
+			document.getElementById("newStock").value = "";
+		}
+
+		function normalizeChances() {
+			const total = sectors.reduce((sum, s) => sum + s.chance, 0);
+
+			if (total === 0) return;
+
+			sectors.forEach(s => {
+				s.chance = (s.chance / total) * 100;
+
+				if (s.chance < 0.5) s.chance = 0.5;
+
+			});
 		}
 
     </script>
