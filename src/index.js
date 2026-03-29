@@ -1,8 +1,11 @@
 export default {
   async fetch(request, env, ctx) {
     
-    const LOGO_URL = "https://young-wildflower-f50f.ffu270.workers.dev/Logo.png"; 
-    const BG_URL = "https://young-wildflower-f50f.ffu270.workers.dev/background.png"; 
+    // const LOGO_URL = "https://young-wildflower-f50f.ffu270.workers.dev/Logo.png"; 
+    // const BG_URL = "https://young-wildflower-f50f.ffu270.workers.dev/background.png"; 
+
+	const LOGO_URL = "/logo.jpg";
+	const BG_URL = "/background.jpg";
 
     const html = `
 <!DOCTYPE html>
