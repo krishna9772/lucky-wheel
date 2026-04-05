@@ -215,6 +215,10 @@ export default {
 			<div id="totalSpins" style="margin-bottom:10px; font-weight:bold; color: #ffcc00;">Total Spins: 0</div>
 			<div id="statsList"></div>
 		</div>
+
+		<button onclick="runAdvancedTest({ spins: 10000, mode: 'random' })">
+			Run Test 10000
+		</button>
 	</div>
 
     <script>
@@ -226,12 +230,12 @@ export default {
         const prizeDisplay = document.getElementById("prizeDisplay");
 
 		const sectors = [
-            { label: "$50 Cashback", cat: "Grand Prize", color: "#d4af37", chance: 2 , stock: 1},
-            { label: "$20 Cashback", cat: "Special Prize", color: "#e61919", chance: 3 , stock: 1 },
-            { label: "$10 Cashback", cat: "Daily Wins", color: "#ffcc00", chance:5, stock: 1 },
-            { label: "Free Earphones", cat: "Inventory Clear", color: "#e61919",chance:25, stock: 1 },
-            { label: "Free Case/Cable", cat: "Consolation", color: "#ffcc00",chance:30, stock: 1 },
-            { label: "Powerbank", cat: "Inventory Clear", color: "#ffcc00",chance:35, stock: 1 },
+            { label: "$50 Cashback", cat: "Grand Prize", color: "#d4af37", chance: 2 , stock: 100},
+            { label: "$20 Cashback", cat: "Special Prize", color: "#e61919", chance: 3 , stock: 100 },
+            { label: "$10 Cashback", cat: "Daily Wins", color: "#ffcc00", chance:5, stock: 100 },
+            { label: "Free Earphones", cat: "Inventory Clear", color: "#e61919",chance:25, stock: 100 },
+            { label: "Free Case/Cable", cat: "Consolation", color: "#ffcc00",chance:30, stock: 100 },
+            { label: "Powerbank", cat: "Inventory Clear", color: "#ffcc00",chance:35, stock: 100 },
         ];
 
 		const bulbRing = document.getElementById("bulbRing");
@@ -524,65 +528,70 @@ export default {
             }, 250);
         }
 
-        function spin() {
-			if(isSpinning) return;
+        async function spin() {
+			if (isSpinning) return;
 
-			enterFullscreen();
+			// Optional: Enter fullscreen for better UX
+			enterFullscreen(); 
+			
 			isSpinning = true;
 			spinBtn.disabled = true;
 			clearInterval(idleInterval);
 
-			// ✅ SAFE WINNER SELECTION (STOCK-AWARE)
-			let winnerIndex = pickWinnerIndex();
+			try {
+				// 1. Call your Laravel API
+				// Update the URL to your Laragon local address (e.g., http://spinner.test/api/spin)
+				const response = await fetch('http://127.0.0.1:8000/api/spin', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Accept': 'application/json'
+					}
+				});
 
-			 if (winnerIndex === -1) {
-				alert("No items available to win!");
+				const data = await response.json();
+
+				if (!response.ok) {
+					throw new Error(data.error || 'Server error');
+				}
+
+				// 2. Find the index of the reward in your 'sectors' array
+				// We assume 'sectors' is synced with your DB 'rewards' table
+				const winnerIndex = sectors.findIndex(s => s.id === data.reward_id);
+
+				if (winnerIndex === -1) {
+					throw new Error("Winner ID mismatch between Backend and Frontend");
+				}
+
+				// 3. Rotation Logic (Same as before, but using winnerIndex from API)
+				const sectorDeg = 360 / sectors.length;
+				const targetDeg = (270 - (winnerIndex * sectorDeg) - (sectorDeg / 2));
+				const extraSpins = 2160; // 6 full rotations
+
+				const finalRotation = 
+					(currentRotation - (currentRotation % 360)) + 
+					extraSpins + 
+					(targetDeg < 0 ? targetDeg + 360 : targetDeg);
+
+				currentRotation = finalRotation;
+
+				canvas.style.transition = "transform 5s cubic-bezier(0.15, 0, 0.15, 1)";
+				canvas.style.transform = "rotate(" + currentRotation + "deg)";
+
+				// 4. Show result after animation
+				setTimeout(() => {
+					showModal(data.reward);
+					shootConfetti();
+					// Optional: refresh data from server to sync stock
+					fetchRewards(); 
+				}, 5000);
+
+			} catch (err) {
+				alert("Spin failed: " + err.message);
 				isSpinning = false;
 				spinBtn.disabled = false;
-				return;
+				startIdleAnimation();
 			}
-
-			const win = sectors[winnerIndex];
-
-			// ❌ HARD BLOCK (no fake wins)
-			if (!win || win.stock <= 0) {
-				console.error("Invalid winner selected:", win);
-				isSpinning = false;
-				spinBtn.disabled = false;
-				return;
-			}
-
-			// ✅ Deduct stock
-			win.stock--;
-
-			// 🎯 Rotation
-			const sectorDeg = 360 / sectors.length;
-			const targetDeg = (270 - (winnerIndex * sectorDeg) - (sectorDeg / 2));
-			const extraSpins = 2160;
-
-			const finalRotation =
-				(currentRotation - (currentRotation % 360)) +
-				extraSpins +
-				(targetDeg < 0 ? targetDeg + 360 : targetDeg);
-
-			currentRotation = finalRotation;
-
-			canvas.style.transition = "transform 5s cubic-bezier(0.15, 0, 0.15, 1)";
-			canvas.style.transform = "rotate(" + currentRotation + "deg)";
-
-			setTimeout(() => {
-
-				// ✅ VALID STATS ONLY
-				spinStats.total++;
-				spinStats.counts[win.label] = (spinStats.counts[win.label] || 0) + 1;
-
-				renderInventory();     // 🔥 sync stock UI
-				updateStatsUI();       // 🔥 sync stats UI
-
-				showModal(win.label);
-				shootConfetti();
-
-			}, 5000);
 		}
 
         function showModal(prize) {
@@ -674,6 +683,201 @@ export default {
 				if (s.chance < 0.5) s.chance = 0.5;
 
 			});
+		}
+
+		function shuffle(arr) {
+			let a = [...arr];
+			for (let i = a.length - 1; i > 0; i--) {
+				const j = Math.floor(Math.random() * (i + 1));
+				[a[i], a[j]] = [a[j], a[i]];
+			}
+			return a;
+		}
+
+		function buildQueue(sectors, cycleSize = 100) {
+			let queue = [];
+			let total = 0;
+
+			sectors.forEach((s, i) => {
+				if (s.stock <= 0 || s.chance <= 0) return;
+
+				let count = Math.floor((s.chance / 100) * cycleSize);
+				count = Math.min(count, s.stock);
+
+				for (let j = 0; j < count; j++) {
+					queue.push(i);
+				}
+
+				total += count;
+			});
+
+			while (total < cycleSize) {
+				let fallback = sectors.findIndex(s => s.stock > 0);
+				if (fallback === -1) break;
+
+				queue.push(fallback);
+				total++;
+			}
+
+			return shuffle(queue);
+		}
+
+		function pickFromQueue(state) {
+			if (state.index >= state.queue.length) {
+				state.queue = buildQueue(state.sectors, state.cycleSize);
+				state.index = 0;
+			}
+
+			return state.queue[state.index++];
+		}
+
+		function runAdvancedTest({
+			spins = 1000,
+			mode = "random", // "random" | "queue"
+			cycleSize = 100
+		} = {}) {
+
+			const testSectors = JSON.parse(JSON.stringify(sectors));
+
+			const state = {
+				sectors: testSectors,
+				queue: [],
+				index: 0,
+				cycleSize
+			};
+
+			if (mode === "queue") {
+				state.queue = buildQueueAdvanced(testSectors, cycleSize);
+			}
+
+			let stats = {
+				total: 0,
+				skipped: 0,
+				counts: {},
+				stockStart: {},
+				stockEnd: {}
+			};
+
+			// init
+			testSectors.forEach(s => {
+				stats.counts[s.label] = 0;
+				stats.stockStart[s.label] = s.stock;
+			});
+
+			for (let i = 0; i < spins; i++) {
+
+				if (testSectors.every(s => s.stock <= 0)) {
+					console.warn("⚠️ Stock exhausted early at spin:", i);
+					break;
+				}
+
+				let idx;
+
+				if (mode === "queue") {
+					idx = pickFromQueueAdvanced(state);
+				} else {
+					idx = pickWinnerIndex(testSectors);
+				}
+
+				const item = testSectors[idx];
+
+				if (!item || item.stock <= 0) {
+					stats.skipped++;
+					continue;
+				}
+
+				item.stock--;
+				stats.total++;
+				stats.counts[item.label]++;
+			}
+
+			testSectors.forEach(s => {
+				stats.stockEnd[s.label] = s.stock;
+			});
+
+			printAdvancedReport(stats, testSectors, spins);
+
+			return stats;
+		}
+
+		function buildQueueAdvanced(sectors, cycleSize = 100) {
+			let queue = [];
+
+			const raw = sectors.map(s =>
+				(s.stock > 0 && s.chance > 0)
+					? (s.chance / 100) * cycleSize
+					: 0
+			);
+
+			let counts = raw.map(Math.floor);
+			let total = counts.reduce((a, b) => a + b, 0);
+
+			let remainder = cycleSize - total;
+
+			let sorted = raw
+				.map((v, i) => ({ i, frac: v - Math.floor(v) }))
+				.sort((a, b) => b.frac - a.frac);
+
+			for (let i = 0; i < remainder; i++) {
+				counts[sorted[i % sorted.length].i]++;
+			}
+
+			counts.forEach((count, i) => {
+				count = Math.min(count, sectors[i].stock);
+
+				for (let j = 0; j < count; j++) {
+					queue.push(i);
+				}
+			});
+
+			return shuffle(queue);
+		}
+
+		function pickFromQueueAdvanced(state) {
+			if (state.index >= state.queue.length) {
+				state.queue = buildQueueAdvanced(state.sectors, state.cycleSize);
+				state.index = 0;
+			}
+
+			return state.queue[state.index++];
+		}
+
+		function printAdvancedReport(stats, sectors, requestedSpins) {
+			console.log("========== 🎯 ADVANCED TEST REPORT ==========");
+			console.log("Requested Spins: " + requestedSpins);
+			console.log("Valid Spins: " + stats.total);
+			console.log("Skipped Spins: " + stats.skipped);
+
+			console.log("------ Distribution ------");
+
+			sectors.forEach(function (s) {
+				var count = stats.counts[s.label];
+				var observed = stats.total ? count / stats.total : 0;
+				var expected = s.chance / 100;
+
+				// 95% confidence interval
+				var ci = 1.96 * Math.sqrt((observed * (1 - observed)) / stats.total);
+
+				var deviation = ((observed - expected) * 100).toFixed(2);
+
+			console.log(
+					s.label +
+					" | Hits: " + count +
+					" | Observed: " + (observed * 100).toFixed(2) + "%" +
+					" | Expected: " + (expected * 100).toFixed(2) + "%" +
+					" | Deviation: " + deviation + "%" +
+					" | CI (±): " + (ci * 100).toFixed(2) + "%"
+				);
+			});
+
+			console.log("------ Stock Usage ------");
+
+			Object.keys(stats.stockStart).forEach(function (label) {
+				var used = stats.stockStart[label] - stats.stockEnd[label];
+				console.log(label + ": used " + used);
+			});
+
+			console.log("=============================================");
 		}
 
     </script>
